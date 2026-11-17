@@ -49,16 +49,15 @@ HELP_TEXT = (
     "• <b>Профиль</b> — ваш титул, монеты и коллекция\n"
     "• <b>Магазин</b> — титулы за монеты 🪙 и за звёзды Telegram ⭐\n"
     "• <b>Эмодзи</b> — свой эмодзи к любому титулу (в т.ч. премиум)\n"
-    "• <b>Промокоды</b> — бонусные монеты и эксклюзивные титулы\n"
-    "• <b>Бонус дня</b> — {daily} 🪙 каждый день\n\n"
-    "Команды: /profile /shop /style /promo КОД /top /daily\n\n"
-    "<b>Для админов чата:</b>\n"
-    "/grant — выдать титул (в ответ на сообщение)\n"
-    "/mass — массовая выдача\n"
-    "/newpromo — создать промокод\n"
-    "/addtitle — добавить титул\n"
-    "/stats — статистика\n"
-    "/whoami — проверить свои права"
+    "• <b>Задания</b> — выполняйте цели и получайте монеты и титулы\n"
+    "• <b>Казино и дуэли</b> — играйте на монеты\n"
+    "• <b>Крафт, лутбоксы, аукцион и обмен</b> — развивайте коллекцию\n"
+    "• <b>Сезоны</b> — соревнуйтесь за призовые титулы\n"
+    "• <b>Промокоды</b> и ежедневный бонус — дополнительные награды\n\n"
+    "Команды: /profile /shop /quests /season /dice /duel /craft /lootbox /auction /rentals /rent /trade /showcase\n\n"
+    "<b>Команды владельца:</b> /addtitle /newpromo /delpromo /aititle /aipromo /aiemoji\n"
+    "<b>Админ чата:</b> /grant /mass /stats /sync\n"
+    "/whoami — проверить права"
 )
 
 
@@ -74,7 +73,7 @@ async def send_menu(message: Message, text: str | None = None) -> None:
             "Этот бот выдаёт <b>титулы</b>: покупай, получай по промокодам, "
             "меняй эмодзи и собирай коллекцию.\n\nВыбирай 👇"
         ),
-        reply_markup=ui.main_menu(admin),
+        reply_markup=ui.main_menu_v2(admin, config.is_owner_user(message.from_user)),
     )
 
 
@@ -141,7 +140,8 @@ async def profile_text(user_id: int) -> str:
 async def cb_menu(callback: CallbackQuery) -> None:
     admin = await can_manage(callback.bot, callback.message, callback.from_user)  # type: ignore[arg-type]
     await callback.message.edit_text(
-        "Главное меню 👇", reply_markup=ui.main_menu(admin)
+        "Главное меню 👇",
+        reply_markup=ui.main_menu_v2(admin, config.is_owner_user(callback.from_user)),
     )
     await callback.answer()
 
@@ -149,8 +149,9 @@ async def cb_menu(callback: CallbackQuery) -> None:
 @router.message(Command("profile", "me"))
 async def cmd_profile(message: Message) -> None:
     await svc.ensure_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
-    await message.answer(await profile_text(message.from_user.id), reply_markup=ui.main_menu(
-        await can_manage(message.bot, message)  # type: ignore[arg-type]
+    await message.answer(await profile_text(message.from_user.id), reply_markup=ui.main_menu_v2(
+        await can_manage(message.bot, message),  # type: ignore[arg-type]
+        config.is_owner_user(message.from_user),
     ))
 
 

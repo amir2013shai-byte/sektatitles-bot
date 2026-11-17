@@ -55,6 +55,8 @@ class Config:
     stars_provider_token: str = os.getenv("STARS_PROVIDER_TOKEN", "")  # для XTR не нужен
 
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    # Адрес витрины коллекции (GitHub Pages): https://USER.github.io/REPO/webapp
+    webapp_url: str = os.getenv("WEBAPP_URL", "")
 
     def __post_init__(self) -> None:
         # Позволяем указывать домен без схемы (как отдаёт Render): name.onrender.com

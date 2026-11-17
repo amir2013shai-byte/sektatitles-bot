@@ -251,3 +251,8 @@ titlebot/
 ---
 
 Лицензия: делайте что хотите, только не публикуйте свой `.env` и токен.
+
+
+## Крупное обновление: игры, квесты и сезоны
+
+Список новых команд и настройка витрины коллекции — в [WEBAPP.md](WEBAPP.md). Владелец: `/aititle`, `/aipromo`, `/aiemoji`, `/season start Название 30`. Участники: `/quests`, `/dice`, `/coin`, `/duel`, `/craft`, `/lootbox`, `/auction`, `/rentals`, `/rent`, `/trade`, `/showcase`.

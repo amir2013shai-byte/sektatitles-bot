@@ -182,6 +182,21 @@ async def main() -> None:
         ("/top", msg_update("/top")),
         ("/daily", msg_update("/daily")),
         ("/backup (не владелец)", msg_update("/backup", user_id=555)),
+        ("/quests", msg_update("/quests")),
+        ("меню квестов", cb_update("nav:quests")),
+        ("/season", msg_update("/season")),
+        ("/dice", msg_update("/dice 100")),
+        ("/craft", msg_update("/craft")),
+        ("/lootbox", msg_update("/lootbox")),
+        ("/auction", msg_update("/auction")),
+        ("/rentals", msg_update("/rentals")),
+        ("аренда из меню", cb_update("nav:rentals")),
+        ("/showcase", msg_update("/showcase")),
+        ("/aititle (владелец)", msg_update("/aititle smoke dragon")),
+        ("/aiemoji (владелец)", msg_update("/aiemoji космос дракон")),
+        ("/aipromo (владелец)", msg_update("/aipromo smoke 2 100")),
+        ("/aititle (не владелец)", msg_update("/aititle secret", user_id=777, username="stranger")),
+        ("/aipromo (не владелец)", msg_update("/aipromo secret", user_id=777, username="stranger")),
     ]
 
     for label, update in steps:
@@ -198,6 +213,23 @@ async def main() -> None:
     assert any("Промокод создан" in t for t in texts), "мастер создания промокода сломан"
     assert any("Готово" in t for t in texts), "массовая выдача не завершилась"
     assert any("Титул добавлен" in t for t in texts), "добавление титула сломалось"
+    assert any("Задания" in t for t in texts), "/quests не ответил"
+    assert any("Сезон" in t for t in texts), "/season не ответил"
+    assert any("Титул создан" in t for t in texts), "/aititle не создал титул"
+    assert any("Кампании" in t for t in texts), "/aipromo не создал промокампанию"
+    assert any("Набор подготовлен" in t for t in texts), "/aiemoji не добавил набор"
+    assert any("только владельцу" in t or "только владельца" in t for t in texts),         "ИИ-команды должны быть закрыты для посторонних"
+
+    # Middleware должен считать обычное сообщение группы, но не команды/личные сообщения.
+    from quests import get_counter
+    before = await get_counter(777777, "messages")
+    await feed(msg_update("а", user_id=777777, username="walker"))
+    after = await get_counter(777777, "messages")
+    assert after == before + 1, "групповое обычное сообщение не попало в счётчик квеста"
+    assert await get_counter(777777, "letter_messages:а") == 1, "секретный счётчик разных сообщений не обновился"
+    from handlers.quests_h import quests_text
+    public_quests = await quests_text(OWNER)
+    assert "Буквоед" not in public_quests and "Эгоист" not in public_quests,         "секретные задания не должны отображаться в /quests"
     print("  ✓ тексты ответов корректны")
 
     # только владелец может создавать промокоды: обычный админ чата получает отказ

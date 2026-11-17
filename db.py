@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import asynccontextmanager
 from typing import Any, Iterable, Sequence
 
 import aiosqlite
@@ -122,6 +123,7 @@ async def init_db(path: str) -> aiosqlite.Connection:
     from catalog import seed
 
     await seed(conn)
+    await migrate_v2()
     return conn
 
 
@@ -148,6 +150,29 @@ async def executemany(sql: str, rows: Iterable[Sequence[Any]]) -> None:
     async with _lock:
         await _c().executemany(sql, list(rows))
         await _c().commit()
+
+
+async def execute_count(sql: str, params: Sequence[Any] = ()) -> int:
+    """Выполняет SQL и возвращает число изменённых строк (для атомарных условных апдейтов)."""
+    async with _lock:
+        cur = await _c().execute(sql, params)
+        count = int(cur.rowcount)
+        await _c().commit()
+        return count
+
+
+@asynccontextmanager
+async def transaction():
+    """Атомарная транзакция на общем соединении; внутри используйте conn напрямую."""
+    async with _lock:
+        conn = _c()
+        await conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield conn
+            await conn.commit()
+        except BaseException:
+            await conn.rollback()
+            raise
 
 
 async def fetch_one(sql: str, params: Sequence[Any] = ()) -> aiosqlite.Row | None:
@@ -191,3 +216,117 @@ async def restore_from(source_path: str) -> None:
 
 
 _DB_PATH: str = ""
+
+
+SCHEMA_V2 = """
+CREATE TABLE IF NOT EXISTS counters (
+    user_id INTEGER NOT NULL,
+    key     TEXT NOT NULL,
+    value   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS quest_state (
+    user_id      INTEGER NOT NULL,
+    quest_id     TEXT NOT NULL,
+    progress     INTEGER NOT NULL DEFAULT 0,
+    completed_at TEXT,
+    claimed_at   TEXT,
+    PRIMARY KEY (user_id, quest_id)
+);
+
+CREATE TABLE IF NOT EXISTS activity_daily (
+    chat_id  INTEGER NOT NULL,
+    user_id  INTEGER NOT NULL,
+    day      TEXT NOT NULL,
+    messages INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (chat_id, user_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS seasons (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    ends_at    TEXT NOT NULL,
+    closed     INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS season_scores (
+    season_id INTEGER NOT NULL,
+    user_id   INTEGER NOT NULL,
+    points    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (season_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS rentals (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    title_id       INTEGER NOT NULL,
+    owner_id       INTEGER NOT NULL,
+    renter_id      INTEGER,
+    price          INTEGER NOT NULL,
+    duration_hours INTEGER NOT NULL,
+    state          TEXT NOT NULL DEFAULT 'open',
+    starts_at      TEXT,
+    ends_at        TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS auctions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title_id    INTEGER NOT NULL,
+    start_price INTEGER NOT NULL,
+    top_user    INTEGER,
+    top_bid     INTEGER NOT NULL DEFAULT 0,
+    ends_at     TEXT NOT NULL,
+    closed      INTEGER NOT NULL DEFAULT 0,
+    created_by  INTEGER,
+    seller_id   INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS duels (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     INTEGER NOT NULL,
+    challenger  INTEGER NOT NULL,
+    opponent    INTEGER NOT NULL,
+    stake       INTEGER NOT NULL,
+    state       TEXT NOT NULL DEFAULT 'pending',
+    winner      INTEGER,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS trades (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id    INTEGER NOT NULL,
+    from_user  INTEGER NOT NULL,
+    to_user    INTEGER NOT NULL,
+    from_title INTEGER NOT NULL,
+    to_title   INTEGER NOT NULL,
+    state      TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS event_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    kind       TEXT NOT NULL,
+    amount     INTEGER NOT NULL DEFAULT 0,
+    meta       TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
+
+async def migrate_v2() -> None:
+    """Досоздаёт таблицы второго сезона (идемпотентно)."""
+    async with _lock:
+        await _c().executescript(SCHEMA_V2)
+        # Мягкая миграция уже существующей таблицы аукционов.
+        cols = {row[1] for row in await (await _c().execute("PRAGMA table_info(auctions)")).fetchall()}
+        if "seller_id" not in cols:
+            await _c().execute("ALTER TABLE auctions ADD COLUMN seller_id INTEGER")
+        await _c().execute("CREATE INDEX IF NOT EXISTS idx_activity_user_day ON activity_daily(user_id, day)")
+        await _c().execute("CREATE INDEX IF NOT EXISTS idx_season_scores ON season_scores(season_id, points DESC)")
+        await _c().execute("CREATE INDEX IF NOT EXISTS idx_auctions_open ON auctions(closed, ends_at)")
+        await _c().execute("CREATE INDEX IF NOT EXISTS idx_rentals_open ON rentals(state, ends_at)")
+        await _c().commit()

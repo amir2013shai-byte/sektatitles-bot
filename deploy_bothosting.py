@@ -45,8 +45,8 @@ SKIP_FILES = {
 }
 
 ENV_VARS = {
-    "BOT_TOKEN": os.environ.get("BOT_TOKEN", "8884403083:AAFP01Fb17trfjZn8qdfN_UopcsdeV7ZY-U"),
-    "OWNER_IDS": os.environ.get("OWNER_IDS", "6456120346"),
+    "BOT_TOKEN": os.environ.get("BOT_TOKEN", ""),
+    "OWNER_IDS": os.environ.get("OWNER_IDS", ""),
     "START_COINS": "50",
     "DAILY_BONUS": "75",
     "PAYMENTS_ENABLED": "1",

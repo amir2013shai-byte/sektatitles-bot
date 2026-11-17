@@ -204,3 +204,98 @@ def promo_confirm_none() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⬅️ В админку", callback_data="nav:admin")]
     ])
+
+
+# ======================== обновление «Второй сезон» ========================
+def main_menu_v2(is_admin: bool = False, is_owner: bool = False) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="🎭 Профиль", callback_data="nav:profile"),
+         InlineKeyboardButton(text="🛒 Магазин", callback_data="nav:shop")],
+        [InlineKeyboardButton(text="🎯 Задания", callback_data="nav:quests"),
+         InlineKeyboardButton(text="🏆 Сезон", callback_data="nav:season")],
+        [InlineKeyboardButton(text="🎲 Казино", callback_data="nav:casino"),
+         InlineKeyboardButton(text="⚔️ Дуэли", callback_data="nav:duels")],
+        [InlineKeyboardButton(text="⚗️ Крафт", callback_data="nav:craft"),
+         InlineKeyboardButton(text="📦 Лутбокс", callback_data="nav:lootbox")],
+        [InlineKeyboardButton(text="💎 Аукцион", callback_data="nav:auction"),
+         InlineKeyboardButton(text="🔄 Обмен", callback_data="nav:trade")],
+        [InlineKeyboardButton(text="⏳ Аренда", callback_data="nav:rentals"),
+         InlineKeyboardButton(text="🏆 Топ", callback_data="nav:top")],
+        [InlineKeyboardButton(text="🎨 Эмодзи", callback_data="nav:style"),
+         InlineKeyboardButton(text="🎁 Промокод", callback_data="nav:promo")],
+        [InlineKeyboardButton(text="🖼 Витрина", callback_data="nav:showcase"),
+         InlineKeyboardButton(text="💫 Бонус дня", callback_data="nav:daily")],
+    ]
+    if is_admin or is_owner:
+        rows.append([InlineKeyboardButton(text="⚙️ Админ-панель", callback_data="nav:admin")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def duel_keyboard(duel_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⚔️ Принять", callback_data=f"duel:accept:{duel_id}"),
+        InlineKeyboardButton(text="✖️ Отказаться", callback_data=f"duel:decline:{duel_id}"),
+    ]])
+
+
+def trade_keyboard(trade_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Принять обмен", callback_data=f"trade:accept:{trade_id}"),
+        InlineKeyboardButton(text="✖️ Отклонить", callback_data=f"trade:decline:{trade_id}"),
+    ]])
+
+
+def quests_keyboard(rows) -> InlineKeyboardMarkup:
+    kb: list[list[InlineKeyboardButton]] = []
+    for quest, progress, claimed in rows:
+        if claimed or progress < quest.target:
+            continue
+        kb.append([InlineKeyboardButton(
+            text=f"🎁 Забрать: {quest.name}", callback_data=f"qc:{quest.id}")])
+    kb.append([InlineKeyboardButton(text="⬅️ В меню", callback_data="nav:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def auction_keyboard(rows) -> InlineKeyboardMarkup:
+    kb: list[list[InlineKeyboardButton]] = []
+    for row in rows:
+        step = max(50, (row["top_bid"] or row["start_price"]) // 5)
+        next_bid = max(row["start_price"], (row["top_bid"] or 0) + step)
+        kb.append([InlineKeyboardButton(
+            text=f"💎 {row['title_emoji']} {row['title_name']} — ставить {next_bid} 🪙",
+            callback_data=f"bid:{row['id']}:{next_bid}")])
+    kb.append([InlineKeyboardButton(text="⬅️ В меню", callback_data="nav:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def casino_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎲 Кубик 100", callback_data="cas:dice:100"),
+         InlineKeyboardButton(text="🎲 Кубик 500", callback_data="cas:dice:500")],
+        [InlineKeyboardButton(text="🪙 Монетка 100", callback_data="cas:coin:100"),
+         InlineKeyboardButton(text="🪙 Монетка 500", callback_data="cas:coin:500")],
+        [InlineKeyboardButton(text="⬅️ В меню", callback_data="nav:menu")],
+    ])
+
+
+def craft_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚪️ Крафт обычных", callback_data="cr:common"),
+         InlineKeyboardButton(text="🔵 Крафт редких", callback_data="cr:rare")],
+        [InlineKeyboardButton(text="🟣 Крафт эпических", callback_data="cr:epic"),
+         InlineKeyboardButton(text="🟡 Крафт легендарных", callback_data="cr:legendary")],
+        [InlineKeyboardButton(text="⬅️ В меню", callback_data="nav:menu")],
+    ])
+
+
+
+def rentals_keyboard(rows) -> InlineKeyboardMarkup:
+    kb: list[list[InlineKeyboardButton]] = []
+    for row in rows:
+        if row["state"] != "open":
+            continue
+        kb.append([InlineKeyboardButton(
+            text=f"⏳ {row['title_emoji']} {row['title_name']} · {row['price']} 🪙 / {row['duration_hours']} ч.",
+            callback_data=f"rent:{row['id']}")])
+    kb.append([InlineKeyboardButton(text="⬅️ В меню", callback_data="nav:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)

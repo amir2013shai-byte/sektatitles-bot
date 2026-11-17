@@ -7,7 +7,8 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/titlebot}"
 SERVICE="titlebot"
-BOT_TOKEN="${BOT_TOKEN:-8884403083:AAFP01Fb17trfjZn8qdfN_UopcsdeV7ZY-U}"
+BOT_TOKEN="${BOT_TOKEN:-}"
+if [[ -z "$BOT_TOKEN" ]]; then echo "Задайте BOT_TOKEN в окружении перед запуском."; exit 1; fi
 OWNER_IDS="${OWNER_IDS:-6456120346}"
 
 say() { printf "\n\033[1;36m== %s\033[0m\n" "$*"; }
@@ -39,7 +40,8 @@ python3 -m venv "$APP_DIR/.venv"
 
 say "4/6 Настройки (.env)"
 cat > "$APP_DIR/.env" <<EOF
-BOT_TOKEN=$BOT_TOKEN
+BOT_TOKEN="${BOT_TOKEN:-}"
+if [[ -z "$BOT_TOKEN" ]]; then echo "Задайте BOT_TOKEN в окружении перед запуском."; exit 1; fi
 OWNER_IDS=$OWNER_IDS
 DATABASE_PATH=$APP_DIR/data/titlebot.sqlite3
 START_COINS=50

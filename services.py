@@ -43,6 +43,7 @@ async def touch_chat(chat_id: int, user_id: int) -> None:
 
 
 async def add_coins(user_id: int, amount: int) -> int:
+    await ensure_user(user_id)
     await db.execute("UPDATE users SET coins = coins + ? WHERE user_id = ?", (amount, user_id))
     return int(await db.scalar("SELECT coins FROM users WHERE user_id = ?", (user_id,)))
 
@@ -63,12 +64,22 @@ async def daily_bonus(user_id: int) -> tuple[bool, int]:
 
 
 # -------------------------------------------------------------------- титулы
-async def all_titles(only_active: bool = True) -> list[aiosqlite.Row]:
-    sql = "SELECT * FROM titles"
+async def all_titles(only_active: bool = True, include_rewards: bool = False) -> list[aiosqlite.Row]:
+    """Каталог для магазина. Наградные титулы скрыты, если не запрошены явно."""
+    from catalog import REWARD_TITLE_CODES
+
+    clauses: list[str] = []
+    params: list[Any] = []
     if only_active:
-        sql += " WHERE active = 1"
+        clauses.append("active = 1")
+    if not include_rewards and REWARD_TITLE_CODES:
+        clauses.append("code NOT IN (" + ",".join("?" for _ in REWARD_TITLE_CODES) + ")")
+        params.extend(sorted(REWARD_TITLE_CODES))
+    sql = "SELECT * FROM titles"
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY price = 0, price, stars, id"
-    return await db.fetch_all(sql)
+    return await db.fetch_all(sql, params)
 
 
 async def get_title(title_id: int) -> aiosqlite.Row | None:
@@ -81,7 +92,8 @@ async def get_title_by_code(code: str) -> aiosqlite.Row | None:
 
 async def inventory(user_id: int) -> list[aiosqlite.Row]:
     return await db.fetch_all(
-        """SELECT t.* FROM inventory i
+        """SELECT t.*, i.source AS inventory_source, i.obtained_at
+           FROM inventory i
            JOIN titles t ON t.id = i.title_id
            WHERE i.user_id = ?
            ORDER BY t.id""",
@@ -103,6 +115,13 @@ async def give_title(user_id: int, title_id: int, source: str = "grant") -> bool
         "INSERT INTO inventory (user_id, title_id, source) VALUES (?, ?, ?)",
         (user_id, title_id, source),
     )
+    # Коллекционный секрет проверяется при каждом новом экземпляре.
+    try:
+        import quests
+
+        await quests.on_event(user_id, "rarities_owned", 1)
+    except Exception:
+        pass
     return True
 
 
@@ -118,26 +137,43 @@ async def equip(user_id: int, title_id: int | None) -> aiosqlite.Row | None:
 
 
 async def buy_with_coins(user_id: int, title_id: int) -> tuple[bool, str]:
-    """Покупка титула за монеты. Возвращает (успех, причина/сообщение)."""
-    title = await get_title(title_id)
-    if title is None or not title["active"]:
-        return False, "Титул недоступен."
-    if title["price"] <= 0:
-        return False, "Этот титул нельзя купить за монеты."
-    if await owns(user_id, title_id):
-        return False, "У вас уже есть этот титул."
-    if title["stock"] == 0:
-        return False, "Тираж закончился."
-    user = await get_user(user_id)
-    if user is None or user["coins"] < title["price"]:
-        have = user["coins"] if user else 0
-        return False, f"Не хватает монет: нужно {title['price']}, у вас {have}."
+    """Покупка титула за монеты: списание, тираж и выдача атомарны."""
+    await ensure_user(user_id)
+    async with db.transaction() as conn:
+        title = await (await conn.execute(
+            "SELECT * FROM titles WHERE id = ?", (title_id,))).fetchone()
+        if title is None or not title["active"]:
+            return False, "Титул недоступен."
+        if title["price"] <= 0:
+            return False, "Этот титул нельзя купить за монеты."
+        owned = await (await conn.execute(
+            "SELECT 1 FROM inventory WHERE user_id = ? AND title_id = ?", (user_id, title_id))).fetchone()
+        if owned:
+            return False, "У вас уже есть этот титул."
+        if title["stock"] == 0:
+            return False, "Тираж закончился."
+        user = await (await conn.execute(
+            "SELECT coins FROM users WHERE user_id = ?", (user_id,))).fetchone()
+        have = int(user["coins"] if user else 0)
+        if user is None or have < title["price"]:
+            return False, f"Не хватает монет: нужно {title['price']}, у вас {have}."
+        if title["stock"] > 0:
+            cur = await conn.execute(
+                "UPDATE titles SET stock = stock - 1 WHERE id = ? AND stock > 0", (title_id,))
+            if cur.rowcount != 1:
+                return False, "Тираж закончился."
+        await conn.execute("UPDATE users SET coins = coins - ?, equipped_id = ? WHERE user_id = ?",
+                           (title["price"], title_id, user_id))
+        await conn.execute(
+            "INSERT INTO inventory (user_id, title_id, source) VALUES (?, ?, 'shop')",
+            (user_id, title_id))
+    try:
+        import quests
 
-    await db.execute("UPDATE users SET coins = coins - ? WHERE user_id = ?", (title["price"], user_id))
-    if title["stock"] > 0:
-        await db.execute("UPDATE titles SET stock = stock - 1 WHERE id = ? AND stock > 0", (title_id,))
-    await give_title(user_id, title_id, source="shop")
-    await equip(user_id, title_id)
+        await quests.on_event(user_id, "coins_spent", int(title["price"]))
+        await quests.on_event(user_id, "rarities_owned", 1)
+    except Exception:
+        pass
     return True, "ok"
 
 
@@ -209,55 +245,82 @@ async def deactivate_promo(code: str) -> bool:
 
 
 async def redeem_promo(user_id: int, code: str) -> tuple[bool, str, aiosqlite.Row | None]:
-    """Активировать промокод. Возвращает (успех, код-результата, промо)."""
+    """Атомарно активирует промокод; лимит и награды не могут задвоиться."""
     code = code.strip().upper()
-    promo = await get_promo(code)
-    if promo is None:
-        return False, "not_found", None
-    if not promo["active"]:
-        # отключён вручную или полностью разобран
-        return False, "exhausted" if promo["uses_left"] == 0 else "disabled", promo
+    await ensure_user(user_id)
+    title_was_given = False
+    async with db.transaction() as conn:
+        promo = await (await conn.execute(
+            "SELECT * FROM promos WHERE code = ? COLLATE NOCASE", (code,))).fetchone()
+        if promo is None:
+            return False, "not_found", None
+        if not promo["active"]:
+            return False, "exhausted" if promo["uses_left"] == 0 else "disabled", promo
+        if promo["expires_at"]:
+            try:
+                expiry = datetime.fromisoformat(promo["expires_at"])
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=UTC)
+                if datetime.now(UTC) > expiry:
+                    return False, "expired", promo
+            except ValueError:
+                return False, "expired", promo
+        used = await (await conn.execute(
+            "SELECT COUNT(*) FROM promo_uses WHERE code = ? AND user_id = ?", (code, user_id)
+        )).fetchone()
+        if int(used[0]) >= promo["per_user"]:
+            return False, "already_used", promo
+        if promo["uses_left"] == 0:
+            return False, "exhausted", promo
 
-    if promo["expires_at"]:
-        now = datetime.now(UTC).isoformat()
-        if now > promo["expires_at"]:
-            return False, "expired", promo
+        title = None
+        if promo["title_id"]:
+            title = await (await conn.execute(
+                "SELECT * FROM titles WHERE id = ?", (promo["title_id"],))).fetchone()
+        if promo["kind"] in ("title", "both") and title is None:
+            return False, "title_missing", promo
 
-    used = int(await db.scalar(
-        "SELECT COUNT(*) FROM promo_uses WHERE code = ? AND user_id = ?", (code, user_id)
-    ))
-    if used >= promo["per_user"]:
-        return False, "already_used", promo
+        gains: list[str] = []
+        if promo["kind"] in ("coins", "both") and promo["coins"]:
+            await conn.execute("UPDATE users SET coins = coins + ? WHERE user_id = ?",
+                               (promo["coins"], user_id))
+            gains.append("coins")
+        if promo["kind"] in ("title", "both") and title is not None:
+            owned = await (await conn.execute(
+                "SELECT 1 FROM inventory WHERE user_id = ? AND title_id = ?",
+                (user_id, title["id"]))).fetchone()
+            if owned:
+                gains.append("title_owned")
+            else:
+                await conn.execute(
+                    "INSERT INTO inventory (user_id, title_id, source) VALUES (?, ?, ?)",
+                    (user_id, title["id"], f"promo:{code}"))
+                user = await (await conn.execute(
+                    "SELECT equipped_id FROM users WHERE user_id = ?", (user_id,))).fetchone()
+                if user and user["equipped_id"] is None:
+                    await conn.execute("UPDATE users SET equipped_id = ? WHERE user_id = ?",
+                                       (title["id"], user_id))
+                title_was_given = True
+                gains.append("title")
 
-    if promo["uses_left"] == 0:
-        return False, "exhausted", promo
+        await conn.execute("INSERT INTO promo_uses (code, user_id) VALUES (?, ?)", (code, user_id))
+        if promo["uses_left"] > 0:
+            await conn.execute("UPDATE promos SET uses_left = uses_left - 1 WHERE code = ?", (code,))
+            left = int((await (await conn.execute(
+                "SELECT uses_left FROM promos WHERE code = ?", (code,))).fetchone())[0])
+            if left <= 0:
+                await conn.execute("UPDATE promos SET active = 0 WHERE code = ?", (code,))
+        result = (True, ",".join(gains) or "nothing", promo)
 
-    title = await get_title(promo["title_id"]) if promo["title_id"] else None
-    if promo["kind"] in ("title", "both") and title is None:
-        return False, "title_missing", promo
+    try:
+        import quests
 
-    gains: list[str] = []
-    if promo["kind"] in ("coins", "both") and promo["coins"]:
-        await add_coins(user_id, promo["coins"])
-        gains.append("coins")
-    if promo["kind"] in ("title", "both") and title is not None:
-        if await give_title(user_id, title["id"], source=f"promo:{code}"):
-            gains.append("title")
-            if (await get_user(user_id))["equipped_id"] is None:
-                await equip(user_id, title["id"])
-        else:
-            gains.append("title_owned")
-
-    await db.execute(
-        "INSERT INTO promo_uses (code, user_id) VALUES (?, ?)", (code, user_id)
-    )
-    if promo["uses_left"] > 0:
-        await db.execute("UPDATE promos SET uses_left = uses_left - 1 WHERE code = ?", (code,))
-        left = int(await db.scalar("SELECT uses_left FROM promos WHERE code = ?", (code,)))
-        if left <= 0:
-            await db.execute("UPDATE promos SET active = 0 WHERE code = ?", (code,))
-
-    return True, ",".join(gains) or "nothing", promo
+        await quests.on_event(user_id, "promo", 1)
+        if title_was_given:
+            await quests.on_event(user_id, "rarities_owned", 1)
+    except Exception:
+        pass
+    return result
 
 
 # ------------------------------------------------------------ массовая выдача
@@ -366,6 +429,22 @@ async def add_emoji_set(set_name: str, items: list[tuple[str, str | None]]) -> i
         await db.execute(
             "INSERT INTO emojis (emoji, custom_emoji_id, set_name, rank) VALUES (?, ?, ?, ?)",
             (emoji, cid, set_name, 200 + idx),
+        )
+        added += 1
+    return added
+
+
+async def add_plain_emoji_set(set_name: str, items: list[str]) -> int:
+    """Добавляет обычные эмодзи в набор кастомизации, не создавая дубликаты."""
+    added = 0
+    for idx, emoji in enumerate(dict.fromkeys(items)):
+        exists = await db.fetch_one(
+            "SELECT id FROM emojis WHERE emoji = ? AND custom_emoji_id IS NULL", (emoji,))
+        if exists:
+            continue
+        await db.execute(
+            "INSERT INTO emojis (emoji, custom_emoji_id, set_name, rank) VALUES (?, NULL, ?, ?)",
+            (emoji, set_name, 300 + idx),
         )
         added += 1
     return added

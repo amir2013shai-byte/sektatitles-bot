@@ -43,6 +43,9 @@ jobs:
           DAILY_BONUS: "75"
           PAYMENTS_ENABLED: "1"
           LOG_LEVEL: INFO
+          WEBAPP_URL: https://amir2013shai-byte.github.io/sektatitles-bot
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-4o-mini
         run: |
           mkdir -p data
           # SIGINT — бот корректно закрывает соединение с Telegram и БД

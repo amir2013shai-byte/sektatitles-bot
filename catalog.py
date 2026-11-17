@@ -11,6 +11,15 @@ RARITIES = {
     "mythic":    {"label": "мифический", "dot": "🔴", "stars": "★★★★"},
 }
 
+
+# Эти титулы выдаются только квестами, сезонами или за активность — они не входят в магазин/лутбоксы.
+REWARD_TITLE_CODES = frozenset({
+    "newbie_active", "talker", "orator", "legend_active", "active_week", "active_month",
+    "duelist", "collector",
+    "season_gold", "season_silver", "season_bronze", "alphabet", "egoist", "owl",
+    "second", "keymaster", "alchemist", "pantheon", "bankrupt",
+})
+
 # code, name, rarity, emoji, price (монеты), stars, stock
 DEFAULT_TITLES = [
     ("novice",      "Новичок",         "common",    "🐣", 150,   0, -1),
@@ -29,6 +38,27 @@ DEFAULT_TITLES = [
     ("emperor",     "Император",       "legendary", "⚡", 0,   250, -1),
     ("myth",        "Легенда чата",    "mythic",    "🔥", 40000, 0, -1),
     ("founder",     "Основатель",      "mythic",    "🛡", 0,     0, 10),
+    # ==== награды обновления: квесты, активность, сезоны, крафт, аукцион ====
+    ("newbie_active", "Первый шаг",     "common",    "🌱", 0, 0, -1),
+    ("talker",      "Болтун",          "common",    "🗣", 0, 0, -1),
+    ("orator",      "Оратор",          "rare",      "🎙", 0, 0, -1),
+    ("legend_active", "Живая легенда", "epic",      "🕯", 0, 0, -1),
+    ("active_week", "Свой человек",    "rare",      "🤝", 0, 0, -1),
+    ("active_month", "Ветеран чата",   "legendary", "🎗", 0, 0, -1),
+    ("duelist",     "Дуэлянт",         "epic",      "⚔️", 0, 0, -1),
+    ("collector",   "Коллекционер",    "epic",      "🗃", 0, 0, -1),
+    ("season_gold", "Чемпион сезона",  "legendary", "🥇", 0, 0, 1),
+    ("season_silver", "Вице-чемпион",  "epic",      "🥈", 0, 0, 1),
+    ("season_bronze", "Бронзовый призёр", "rare",   "🥉", 0, 0, 1),
+    # ==== секретные ====
+    ("alphabet",    "Буквоед",         "mythic",    "🔤", 0, 0, -1),
+    ("egoist",      "Эгоист",          "epic",      "🪞", 0, 0, -1),
+    ("owl",         "Полуночный страж", "epic",     "🦉", 0, 0, -1),
+    ("second",      "Вечный второй",   "rare",      "🥀", 0, 0, -1),
+    ("keymaster",   "Ключник",         "legendary", "🗝", 0, 0, -1),
+    ("alchemist",   "Алхимик",         "legendary", "⚗️", 0, 0, -1),
+    ("pantheon",    "Пантеон",         "mythic",    "🏛", 0, 0, -1),
+    ("bankrupt",    "Банкрот",         "common",    "🕳", 0, 0, -1),
 ]
 
 # Базовый набор обычных эмодзи для кастомизации (без Telegram Premium)

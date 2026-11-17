@@ -19,9 +19,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, ErrorEvent, Update
 
 import db
+import economy
 from config import config
 import backup
-from handlers import admin, common, shop, style
+from handlers import admin, ai, common, games, market, quests_h, season, shop, style
+import handlers_hub
 from middlewares import UserTracking
 
 log = logging.getLogger("titlebot")
@@ -33,8 +35,14 @@ def build_dispatcher() -> Dispatcher:
 
     # Порядок важен: команды админов — раньше «ловушек» текста
     dp.include_router(admin.router)
+    dp.include_router(ai.router)
     dp.include_router(backup.router)
     dp.include_router(style.router)
+    dp.include_router(games.router)
+    dp.include_router(quests_h.router)
+    dp.include_router(market.router)
+    dp.include_router(season.router)
+    dp.include_router(handlers_hub.router)
     dp.include_router(shop.router)
     dp.include_router(common.router)   # здесь живёт F.text.regexp для промокодов
 
@@ -57,6 +65,22 @@ async def set_commands(bot: Bot) -> None:
         BotCommand(command="style", description="Эмодзи титула"),
         BotCommand(command="promo", description="Активировать промокод"),
         BotCommand(command="top", description="Топ коллекционеров"),
+        BotCommand(command="quests", description="Задания и награды"),
+        BotCommand(command="season", description="Сезон и лидерборд"),
+        BotCommand(command="dice", description="Казино: кубик на монеты"),
+        BotCommand(command="coin", description="Казино: монетка"),
+        BotCommand(command="duel", description="Дуэль на монеты"),
+        BotCommand(command="craft", description="Крафт титулов"),
+        BotCommand(command="lootbox", description="Открыть лутбокс"),
+        BotCommand(command="auction", description="Аукцион титулов"),
+        BotCommand(command="bid", description="Ставка на лот"),
+        BotCommand(command="trade", description="Предложить обмен титулами"),
+        BotCommand(command="rentals", description="Аренда титулов"),
+        BotCommand(command="rent", description="Сдать или арендовать титул"),
+        BotCommand(command="showcase", description="Витрина коллекции"),
+        BotCommand(command="aititle", description="Создать титул-генератором (владелец)"),
+        BotCommand(command="aipromo", description="Создать промокампанию (владелец)"),
+        BotCommand(command="aiemoji", description="Добавить тематический набор эмодзи"),
         BotCommand(command="admin", description="Админ-панель"),
         BotCommand(command="whoami", description="Проверить свои права"),
         BotCommand(command="help", description="Помощь"),
@@ -136,14 +160,21 @@ async def main() -> None:
     await set_commands(bot)
 
     interval = float(os.getenv("AUTO_BACKUP_HOURS", "0") or 0)
+    background: list[asyncio.Task] = [
+        asyncio.create_task(economy.maintenance_loop(), name="economy-maintenance")
+    ]
     if interval > 0:
-        asyncio.create_task(backup.auto_backup_loop(bot, interval))
+        background.append(asyncio.create_task(backup.auto_backup_loop(bot, interval), name="auto-backup"))
     try:
         if config.use_webhook:
             await run_webhook(bot, dp)
         else:
             await run_polling(bot, dp)
     finally:
+        for task in background:
+            task.cancel()
+        if background:
+            await asyncio.gather(*background, return_exceptions=True)
         await db.close_db()
         await bot.session.close()
 

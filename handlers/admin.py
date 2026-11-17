@@ -180,6 +180,7 @@ async def cmd_revoke(message: Message, command: CommandObject) -> None:
 
 @router.message(Command("titles"))
 async def cmd_titles(message: Message) -> None:
+    # Публичный список магазина не раскрывает наградные/секретные титулы.
     titles = await svc.all_titles()
     lines = ["<b>📚 Титулы в каталоге</b>\n"]
     for t in titles:
@@ -197,7 +198,7 @@ async def cmd_mass(message: Message, state: FSMContext) -> None:
     if not await guard(message):
         return
     await state.set_state(Mass.title)
-    titles = await svc.all_titles()
+    titles = await svc.all_titles(include_rewards=True)
     await message.answer(
         "<b>📢 Массовая выдача титула</b>\n\nШаг 1/3 — выберите титул:",
         reply_markup=ui.mass_titles_keyboard(titles, 0),
@@ -210,7 +211,7 @@ async def cb_mass(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer("Только для админов", show_alert=True)
         return
     await state.set_state(Mass.title)
-    titles = await svc.all_titles()
+    titles = await svc.all_titles(include_rewards=True)
     await callback.message.edit_text(
         "<b>📢 Массовая выдача титула</b>\n\nШаг 1/3 — выберите титул:",
         reply_markup=ui.mass_titles_keyboard(titles, 0),
@@ -221,7 +222,7 @@ async def cb_mass(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data.startswith("mtp:"))
 async def cb_mass_page(callback: CallbackQuery) -> None:
     page = int(callback.data.split(":")[1])
-    titles = await svc.all_titles()
+    titles = await svc.all_titles(include_rewards=True)
     await callback.message.edit_reply_markup(reply_markup=ui.mass_titles_keyboard(titles, page))
     await callback.answer()
 

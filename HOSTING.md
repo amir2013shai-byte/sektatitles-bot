@@ -47,7 +47,7 @@ Python + aiogram 162 МБ). Поэтому бесплатные тарифы н�
 3. **Загрузить файлы:** в проекте откройте вкладку **«Файлы»** → перетащите содержимое архива
    `titlebot-deploy.zip` (main.py, папку handlers, requirements.txt, amvera.yaml, .env).
 4. **Переменные окружения:** вкладка **«Переменные»** → добавьте:
-   - `BOT_TOKEN` = `8884403083:AAFP01Fb17trfjZn8qdfN_UopcsdeV7ZY-U` (секрет)
+   - `BOT_TOKEN` = `[токен из @BotFather]` (секрет)
    - `OWNER_IDS` = `6456120346`
    - `START_COINS` = `50`, `DAILY_BONUS` = `75`, `AUTO_BACKUP_HOURS` = `24`
 5. **Запустить:** кнопка **«Собрать»/«Запустить»**. Логи в интерфейсе:
@@ -96,7 +96,7 @@ requirements.txt   runtime.txt
 
 | Key | Value |
 |---|---|
-| `BOT_TOKEN` | `8884403083:AAFP01Fb17trfjZn8qdfN_UopcsdeV7ZY-U` |
+| `BOT_TOKEN` | `[токен из @BotFather]` |
 | `OWNER_IDS` | `6456120346` |
 | `START_COINS` | `50` |
 | `DAILY_BONUS` | `75` |

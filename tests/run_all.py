@@ -8,7 +8,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 FAILED = []
 
-for name in ("test_logic.py", "test_backup.py", "test_bot_smoke.py", "test_webhook.py"):
+for name in ("test_logic.py", "test_backup.py", "test_bot_smoke.py", "test_webhook.py", "test_season2.py"):
     print(f"\n=== {name} ===")
     result = subprocess.run([sys.executable, os.path.join(HERE, name)])
     if result.returncode != 0:
