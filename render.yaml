@@ -1,0 +1,21 @@
+# Blueprint для Render: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: titlebot
+    runtime: python
+    plan: free
+    healthCheckPath: /
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: OWNER_IDS
+        sync: false
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      # PUBLIC_BASE_URL не нужен: Render сам подставляет RENDER_EXTERNAL_URL
+      - key: DATABASE_PATH
+        value: data/titlebot.sqlite3
+      - key: PYTHON_VERSION
+        value: 3.12.6

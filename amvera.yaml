@@ -1,0 +1,15 @@
+# Конфигурация для Amvera Cloud (российский хостинг, работает из РФ, бот не засыпает).
+# Деплой: личный кабинет → «Загрузить файлы» (или git push amvera master).
+meta:
+  environment: python
+  toolchain:
+    name: pip
+    version: "3.12"
+
+build:
+  requirementsPath: requirements.txt
+
+run:
+  scriptName: main.py
+  # постоянный диск: база титулов переживает перезапуски и обновления
+  persistenceMount: /data

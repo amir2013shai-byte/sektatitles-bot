@@ -1,0 +1,73 @@
+# Бесплатный 24/7 хостинг бота средствами GitHub Actions.
+# Публичный репозиторий = безлимитные минуты Actions, карта не нужна, из РФ доступно.
+# Схема: каждые 6 часов запускается job, бот работает ~5ч45м, база коммитится обратно в репозиторий.
+name: TitleBot
+
+on:
+  workflow_dispatch:          # кнопка "Run workflow" вручную
+  schedule:
+    - cron: "5 */6 * * *"     # 00:05, 06:05, 12:05, 18:05 UTC (каждые 6 часов)
+
+concurrency:
+  group: titlebot
+  cancel-in-progress: false
+
+permissions:
+  contents: write             # нужно, чтобы сохранять базу в репозиторий
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358      # жёсткий предел GitHub — 6 часов
+    steps:
+      - name: Код
+        uses: actions/checkout@v4
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Зависимости
+        run: pip install -q -r requirements.txt
+
+      - name: Запуск бота (~5 ч 45 мин)
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          OWNER_IDS: ${{ secrets.OWNER_IDS }}
+          OWNER_USERNAMES: an7m3_t4n0ch7a
+          ALLOW_CHAT_ADMIN_PROMOS: "0"
+          DATABASE_PATH: data/titlebot.sqlite3
+          START_COINS: "50"
+          DAILY_BONUS: "75"
+          PAYMENTS_ENABLED: "1"
+          LOG_LEVEL: INFO
+        run: |
+          mkdir -p data
+          # SIGINT — бот корректно закрывает соединение с Telegram и БД
+          timeout --signal=SIGINT 20700 python main.py || true
+
+      - name: Сохранить базу в репозиторий
+        if: always()
+        run: |
+          python - <<'PY' || true
+          import sqlite3, os
+          p = "data/titlebot.sqlite3"
+          if os.path.exists(p):
+              c = sqlite3.connect(p)
+              c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+              c.commit(); c.close()
+              print("база:", os.path.getsize(p), "байт")
+          else:
+              print("базы нет — нечего сохранять")
+          PY
+          git config user.name "titlebot"
+          git config user.email "titlebot@users.noreply.github.com"
+          git add -f data/titlebot.sqlite3
+          if git diff --cached --quiet; then
+            echo "изменений нет"
+          else
+            git commit -m "db: $(date -u +%FT%TZ)"
+            git push
+          fi
